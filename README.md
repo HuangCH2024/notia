@@ -1,6 +1,6 @@
 # Notia - Free and quality Online Message Board 
 
-![NotiaLogo](./src/NotiaLogo.png)
+![NotiaLogo](./NotiaLogo.png)
 
 ## About this Porject
 
