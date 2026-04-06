@@ -6,6 +6,10 @@
 
 Notia is an online open-source web message board that is completely anonymous. Anyone with internet access can come and post. Of course, you can also deploy Notia on your own web server. Notia is completely free.
 
+## Overview
+
+![NotiaInterface](./NotiaGUI.png)
+
 ## Tech Stack
 
 1. Real-time Engine: Supabase PostgREST + WebSockets (Realtime).
