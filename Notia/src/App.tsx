@@ -278,7 +278,7 @@ export default function App() {
                             <Box component={motion.div} initial={{ opacity: 0, scale: 0.9, y: 20, x: '-50%' }} animate={{ opacity: 1, scale: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
                                  sx={{ position: 'fixed', top: '10%', left: '50%', zIndex: 20001, width: { xs: '92%', sm: '480px' }, bgcolor: 'white', p: 4, borderRadius: '32px', boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 3 }}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Typography variant="h5" fontWeight="900" color="primary">发布新贴纸</Typography>
+                                    <Typography variant="h5" fontWeight="900" color="primary">发布一个标签</Typography>
                                     <IconButton onClick={() => setOpenDialog(false)} sx={{ bgcolor: '#f5f5f5' }}><Close fontSize="small" /></IconButton>
                                 </Box>
                                 <Box sx={scrollBoxSx}>
