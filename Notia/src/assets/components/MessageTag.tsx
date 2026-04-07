@@ -1,4 +1,4 @@
-import React, { memo, useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import Draggable from 'react-draggable';
 import { Box, Typography, Paper } from '@mui/material';
 import { motion } from 'framer-motion';

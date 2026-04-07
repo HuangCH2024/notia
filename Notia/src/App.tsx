@@ -4,7 +4,7 @@ import {
     Badge, Button, Snackbar, Alert, Slide, type SlideProps, Tooltip
 } from '@mui/material';
 import {
-    ChatBubbleOutline, ContactSupport, AddCircleOutline, Send, Close
+    ChatBubbleOutline, ContactSupport, AddCircleOutline, Close
 } from '@mui/icons-material';
 import { AnimatePresence, motion } from 'framer-motion';
 
