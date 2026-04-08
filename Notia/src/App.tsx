@@ -2,13 +2,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Typography, Box, TextField, IconButton,
     Badge, Button, Snackbar, Alert, Slide, type SlideProps, Tooltip,
-    useMediaQuery, Fab, Zoom
+    useMediaQuery, Fab, Zoom , Link
 } from '@mui/material';
 import {
     ChatBubbleOutline, ContactSupport, AddCircleOutline, Close, EditNote
 } from '@mui/icons-material';
 import { AnimatePresence, motion } from 'framer-motion';
+import { TouchApp } from '@mui/icons-material';
 
+import { PanTool, BackHand , AdsClick} from '@mui/icons-material';
 import { supabase } from './assets/components/supabase';
 import { MessageTag } from './assets/components/MessageTag';
 
@@ -47,6 +49,10 @@ export default function App() {
     const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
     const lastMousePos = useRef({ x: 0, y: 0 });
     const hasIncremented = useRef(false);
+    const [manualLock, setManualLock] = useState(false);
+    const isLocked = isSpacePressed || manualLock;
+    // 默认从 0 开始渲染
+const [displayLimit, setDisplayLimit] = useState(0);
 
     const handleError = (msg: string) => {
         setErrorMsg(msg);
@@ -138,12 +144,12 @@ export default function App() {
         };
     }, [isSidebarOpen, openDialog, openNameDialog]);
 
-    const handleCanvasMouseDown = (e: React.MouseEvent) => {
-        if (isSpacePressed) {
-            setIsDraggingCanvas(true);
-            lastMousePos.current = { x: e.clientX, y: e.clientY };
-        }
-    };
+    // const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    //     if (isSpacePressed) {
+    //         setIsDraggingCanvas(true);
+    //         lastMousePos.current = { x: e.clientX, y: e.clientY };
+    //     }
+    // };
 
     const handleCanvasMouseMove = (e: React.MouseEvent) => {
         if (isDraggingCanvas && scrollContainerRef.current) {
@@ -169,30 +175,66 @@ export default function App() {
         await supabase.from('messages').update({ z_index: newZ }).eq('id', id);
     };
 
-    const handleSubmit = async () => {
-        if (!username.trim() || !content.trim()) return handleError("署名和内容不能为空哦！");
-        setLoading(true);
-        let stickerUrl = '';
-        try {
-            if (file) {
-                const fileExt = file.name.split('.').pop();
-                const cleanFileName = file.name.split('.').slice(0, -1).join('.').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-                const fileName = `${Date.now()}-${cleanFileName}.${fileExt}`;
-                const { error: uploadError } = await supabase.storage.from('stickers').upload(fileName, file);
-                if (uploadError) throw uploadError;
-                const { data: pUrl } = supabase.storage.from('stickers').getPublicUrl(fileName);
-                stickerUrl = pUrl.publicUrl;
-            }
-            const maxZ = messages.length > 0 ? Math.max(...messages.map(m => m.z_index || 0)) : 10;
-            await supabase.from('messages').insert([{
-                username, content, sticker_url: stickerUrl,
-                pos_x: Math.floor(Math.random() * 2100),
-                pos_y: Math.floor(Math.random() * 1100),
-                z_index: maxZ + 1
-            }]);
-            setOpenDialog(false); setShowSuccess(true); setContent(''); setPreview(null); setFile(null);
-        } catch (err: any) { handleError(err.message); } finally { setLoading(false); }
-    };
+   const handleSubmit = async () => {
+    if (!username.trim() || !content.trim()) return handleError("署名和内容不能为空哦！");
+    setLoading(true);
+    let stickerUrl = '';
+    
+    try {
+        // --- 1. 图片上传逻辑 (保持不变) ---
+        if (file) {
+            const fileExt = file.name.split('.').pop();
+            const cleanFileName = file.name.split('.').slice(0, -1).join('.').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+            const fileName = `${Date.now()}-${cleanFileName}.${fileExt}`;
+            const { error: uploadError } = await supabase.storage.from('stickers').upload(fileName, file);
+            if (uploadError) throw uploadError;
+            const { data: pUrl } = supabase.storage.from('stickers').getPublicUrl(fileName);
+            stickerUrl = pUrl.publicUrl;
+        }
+
+        // --- 2. 核心逻辑：计算视口中心坐标 ---
+        const container = scrollContainerRef.current;
+        let finalX = 1000; // 默认回退值
+        let finalY = 500;
+
+        if (container) {
+            const { scrollLeft, scrollTop, clientWidth, clientHeight } = container;
+            
+            // 计算视口中心
+            const centerX = scrollLeft + clientWidth / 2;
+            const centerY = scrollTop + clientHeight / 2;
+
+            // 设置偏移范围（例如：正负 60px 之间随机）
+            const jitter = () => (Math.random() - 0.5) * 120;
+
+            // 最终坐标（考虑到贴纸自身的宽度，可以适当减去一些偏移，让它更居中）
+            finalX = centerX + jitter() - 100; // 假设贴纸宽约200
+            finalY = centerY + jitter() - 100;
+        }
+
+        const maxZ = messages.length > 0 ? Math.max(...messages.map(m => m.z_index || 0)) : 10;
+
+        // --- 3. 提交到 Supabase ---
+        await supabase.from('messages').insert([{
+            username, 
+            content, 
+            sticker_url: stickerUrl,
+            pos_x: Math.floor(finalX),
+            pos_y: Math.floor(finalY),
+            z_index: maxZ + 1
+        }]);
+
+        setOpenDialog(false); 
+        setShowSuccess(true); 
+        setContent(''); 
+        setPreview(null); 
+        setFile(null);
+    } catch (err: any) { 
+        handleError(err.message); 
+    } finally { 
+        setLoading(false); 
+    }
+};
 
     const handleFeedbackSubmit = async () => {
         if (!feedbackContent.trim()) return handleError("反馈内容不能为空哦！");
@@ -241,6 +283,23 @@ export default function App() {
         gap: 3
     };
 
+    useEffect(() => {
+    // 如果当前显示的贴纸少于总数，则启动定时器
+    if (displayLimit < messages.length) {
+        const timer = setTimeout(() => {
+            // 每次增加的数量可以根据性能调整，例如每次 +1 或 +5
+            setDisplayLimit(prev => prev + 3); 
+        }, 300); // 间隔 30ms 渲染下一批，给浏览器留出响应时间
+
+        return () => clearTimeout(timer);
+    }
+}, [messages.length, displayLimit]);
+
+// 补充：当重新获取数据或切换画板时，记得重置 displayLimit
+useEffect(() => {
+    setDisplayLimit(0);
+}, [messages.length === 0]);
+
     return (
         <Box sx={{ width: '100vw', height: '100vh', overflow: 'hidden', bgcolor: '#f5f7f9', position: 'relative' }}>
 
@@ -266,12 +325,45 @@ export default function App() {
                         <>
                             <TextField size="small" placeholder="发布前先署名" variant="standard" value={username} onChange={e => setUsername(e.target.value)}
                                 InputProps={{ disableUnderline: true }} sx={{ width: 100, bgcolor: 'rgba(0,0,0,0.04)', px: 1.2, py: 0.4, borderRadius: '6px' }} />
-                            <Tooltip title={`共有 ${messages.length} 条消息`} arrow>
+                                <Tooltip title={manualLock ? "当前：移动画布 (贴纸已锁定)" : "当前：自由交互"} arrow slotProps={{ popper: { sx: { zIndex: 20003 } } }}>
+                    <IconButton 
+                        onClick={() => setManualLock(!manualLock)} 
+                        sx={{ 
+                            mx: 0.5, 
+                            color: manualLock ? 'secondary.main' : 'primary.main',
+                            bgcolor: manualLock ? 'rgba(156, 39, 176, 0.08)' : 'transparent', // 激活时给个淡淡的背景色
+                            '&:hover': { bgcolor: manualLock ? 'rgba(156, 39, 176, 0.12)' : 'rgba(0,0,0,0.04)' }
+                        }}
+                    >
+                        {manualLock ? <BackHand fontSize="small" /> : < AdsClick fontSize="small" />}
+                    </IconButton>
+                </Tooltip>
+                            <Tooltip title={`共有 ${messages.length} 条消息`} arrow slotProps={{
+    popper: {
+      sx: {
+        zIndex: 20003,
+      },
+          modifiers: [
+      {
+        name: 'offset',
+        options: {
+          offset: [0, 8]  // 向上移动 12px，让 Tooltip 更贴近触发元素
+        }
+      }
+    ]
+    },
+  }}>
                                 <Badge badgeContent={messages.length} color="error" sx={{ mx: 1.5, my: 1 }}>
                                     <ChatBubbleOutline fontSize="small" />
                                 </Badge>
                             </Tooltip>
-                            <Tooltip title="建议反馈" arrow>
+                            <Tooltip title="建议反馈" arrow slotProps={{
+    popper: {
+      sx: {
+        zIndex: 20003,
+      },
+    },
+  }}>
                                 <IconButton color="primary" onClick={() => setIsSidebarOpen(true)}><ContactSupport /></IconButton>
                             </Tooltip>
                         </>
@@ -281,7 +373,13 @@ export default function App() {
                             <ChatBubbleOutline color="action" />
                         </Badge>
                     )}
-
+ <Tooltip title="建议反馈" arrow slotProps={{
+    popper: {
+      sx: {
+        zIndex: 20003,
+      },
+    },
+  }}>
                     <IconButton
                         color="primary"
                         onClick={() => setOpenDialog(true)}
@@ -293,12 +391,18 @@ export default function App() {
                     >
                         <AddCircleOutline />
                     </IconButton>
+                    </Tooltip>
                 </Box>
             </Box>
 
             {/* 画布区域 */}
             <Box ref={scrollContainerRef} 
-    onMouseDown={handleCanvasMouseDown} 
+    onMouseDown={(e) => {
+        if (isLocked) { // 修改这里
+            setIsDraggingCanvas(true);
+            lastMousePos.current = { x: e.clientX, y: e.clientY };
+        }
+    }}
     onMouseMove={handleCanvasMouseMove} 
     onMouseUp={handleCanvasMouseUp} 
     onMouseLeave={handleCanvasMouseUp}
@@ -307,7 +411,7 @@ export default function App() {
         width: '100%', 
         height: '100%', 
         overflow: 'auto', 
-        cursor: isSpacePressed ? 'grab' : 'default',
+        cursor: isLocked ? 'grab' : 'default',
         // --- 新增：自定义滚动条样式 ---
         '&::-webkit-scrollbar': {
             width: '8px',
@@ -328,17 +432,35 @@ export default function App() {
         scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
     }}>
                 <Box sx={{ width: '2560px', height: '1440px', position: 'relative', backgroundImage: 'radial-gradient(#d1d5db 1px, transparent 0)', backgroundSize: '40px 40px', '& > *': {
-            pointerEvents: isSpacePressed ? 'none' : 'auto',
+            pointerEvents: isLocked ? 'none' : 'auto',
         }}}>
-                    {messages.map((msg) => (
-                        <MessageTag key={msg.id} data={msg} onFocus={handleFocus} onStop={handleStop} />
-                    ))}
+                    {messages.slice(0, displayLimit).map((msg) => (
+        <MessageTag 
+            key={msg.id} 
+            data={msg} 
+            onFocus={handleFocus} 
+            onStop={handleStop} 
+        />
+    ))}
                 </Box>
             </Box>
 
             {/* 移动端 FAB */}
             <Zoom in={isMobile} unmountOnExit>
                 <Box sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 10000, display: 'flex', flexDirection: 'column', gap: 2 }}>
+    {/*第四个: 手动关闭 贴纸移动 */}
+<Fab 
+        color={manualLock ? "secondary" : "default"} 
+        onClick={() => setManualLock(!manualLock)}
+        sx={{ bgcolor: manualLock ? undefined : 'white' }}
+    >
+        {manualLock ? (
+            <PanTool sx={{ color: 'white' }} /> // 移动画布模式
+        ) : (
+            <TouchApp color="primary" /> // 自由交互模式
+        )}
+    </Fab>
+
   {/* 第一个：蓝色背景 + 白色图标 */}
   <Fab color="primary" onClick={() => setOpenDialog(true)}>
     <AddCircleOutline sx={{ color: 'white' }} />
@@ -364,6 +486,8 @@ export default function App() {
   <Fab color="default" onClick={() => setIsSidebarOpen(true)} sx={{ bgcolor: 'white' }}>
     <ContactSupport color="primary" />
   </Fab>
+
+
 </Box>
             </Zoom>
 
@@ -405,6 +529,14 @@ export default function App() {
                                 </Box>
                                 <TextField fullWidth label="如何联系？" value={feedbackContact} onChange={e => setFeedbackContact(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '12px' } }} />
                                 <TextField fullWidth multiline rows={4} label="内容" value={feedbackContent} onChange={e => setFeedbackContent(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '12px' } }} />
+                                    <Box sx={{display: 'flex', gap: 1 , flexDirection: "column"}}>
+                                                                      <Typography component="p" color="primary" sx={{fontSize: 14}}> 
+                                    Gmail : <Typography component="span" color="secondary" sx={{fontSize: 14}}>huangmiaomiao2025@mail.com</Typography>
+                                </Typography>
+                                <Typography component="p" color="primary" sx={{fontSize: 14}}> 
+                                    Github : <Link sx={{fontSize: 14}} color="secondary" href="https://github.com/HuangCH2024/notia" >https://github.com/HuangCH2024/notia</Link>
+                                </Typography>
+                                    </Box>
                                 <Button variant="contained" fullWidth size="large" onClick={handleFeedbackSubmit} sx={{ py: 1.5, borderRadius: '14px', fontWeight: 'bold' }}>提交</Button>
                             </Box>
                         )}
@@ -443,8 +575,8 @@ export default function App() {
                 )}
             </AnimatePresence>
 
-            <Snackbar open={showSuccess} autoHideDuration={3000} onClose={() => setShowSuccess(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} TransitionComponent={SlideUp}><Alert severity="success" variant="filled" sx={{ borderRadius: '12px' }}>操作成功！</Alert></Snackbar>
-            <Snackbar open={openError} autoHideDuration={5000} onClose={() => setOpenError(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} TransitionComponent={SlideUp}><Alert severity="error" variant="filled" sx={{ borderRadius: '12px' }}>{errorMsg}</Alert></Snackbar>
+            <Snackbar open={showSuccess} autoHideDuration={5000} onClose={() => setShowSuccess(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center'}} sx={{ zIndex: 20003}} TransitionComponent={SlideUp}><Alert severity="success" variant="filled" sx={{ borderRadius: '12px' }}>操作成功！</Alert></Snackbar>
+            <Snackbar open={openError} autoHideDuration={5000} onClose={() => setOpenError(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center'}} sx={{ zIndex: 20003}} TransitionComponent={SlideUp}><Alert severity="error" variant="filled" sx={{ borderRadius: '12px'}}>{errorMsg}</Alert></Snackbar>
         </Box>
     );
 }
