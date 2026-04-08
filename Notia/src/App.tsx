@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
     Typography, Box, TextField, IconButton,
     Badge, Button, Snackbar, Alert, Slide, type SlideProps, Tooltip,
-    useMediaQuery, useTheme, Fab, Zoom
+    useMediaQuery, Fab, Zoom
 } from '@mui/material';
 import {
     ChatBubbleOutline, ContactSupport, AddCircleOutline, Close, EditNote
@@ -20,7 +20,7 @@ function SlideUp(props: SlideProps) {
 }
 
 export default function App() {
-    const theme = useTheme();
+    // const theme = useTheme();
     const isMobile = useMediaQuery('(max-width:450px)');
 
     const [messages, setMessages] = useState<any[]>([]);
@@ -40,7 +40,7 @@ export default function App() {
 
     const [feedbackContact, setFeedbackContact] = useState('');
     const [feedbackContent, setFeedbackContent] = useState('');
-    const [isSendingFeedback, setIsSendingFeedback] = useState(false);
+    const [, setIsSendingFeedback] = useState(false);
 
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [isSpacePressed, setIsSpacePressed] = useState(false);
@@ -57,7 +57,7 @@ export default function App() {
         type: "tween",
         ease: "easeInOut",
         duration: 0.15
-    };
+    } as const;
 
 
     // --- 新增：图片强制压缩处理函数 ---
