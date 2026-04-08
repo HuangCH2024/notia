@@ -1,21 +1,28 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     Typography, Box, TextField, IconButton,
-    Badge, Button, Snackbar, Alert, Slide, type SlideProps, Tooltip
+    Badge, Button, Snackbar, Alert, Slide, type SlideProps, Tooltip,
+    useMediaQuery, useTheme, Fab, Zoom
 } from '@mui/material';
 import {
-    ChatBubbleOutline, ContactSupport, AddCircleOutline, Close
+    ChatBubbleOutline, ContactSupport, AddCircleOutline, Close, EditNote
 } from '@mui/icons-material';
 import { AnimatePresence, motion } from 'framer-motion';
 
 import { supabase } from './assets/components/supabase';
 import { MessageTag } from './assets/components/MessageTag';
 
+// 导入压缩库
+import imageCompression from 'browser-image-compression';
+
 function SlideUp(props: SlideProps) {
     return <Slide {...props} direction="up" />;
 }
 
 export default function App() {
+    const theme = useTheme();
+    const isMobile = useMediaQuery('(max-width:450px)');
+
     const [messages, setMessages] = useState<any[]>([]);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     const [openDialog, setOpenDialog] = useState(false);
@@ -24,18 +31,17 @@ export default function App() {
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [openError, setOpenError] = useState(false);
 
-    // --- 状态控制 ---
     const [username, setUsername] = useState('');
     const [content, setContent] = useState('');
     const [file, setFile] = useState<File | null>(null);
     const [preview, setPreview] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [openNameDialog, setOpenNameDialog] = useState(false);
 
     const [feedbackContact, setFeedbackContact] = useState('');
     const [feedbackContent, setFeedbackContent] = useState('');
     const [isSendingFeedback, setIsSendingFeedback] = useState(false);
 
-    // --- 画布逻辑 ---
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const [isSpacePressed, setIsSpacePressed] = useState(false);
     const [isDraggingCanvas, setIsDraggingCanvas] = useState(false);
@@ -45,6 +51,45 @@ export default function App() {
     const handleError = (msg: string) => {
         setErrorMsg(msg);
         setOpenError(true);
+    };
+
+    const transitionConfig = {
+        type: "tween",
+        ease: "easeInOut",
+        duration: 0.15
+    };
+
+
+    // --- 新增：图片强制压缩处理函数 ---
+    const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const originFile = e.target.files?.[0];
+        if (!originFile) return;
+
+        // 压缩配置：强制宽高不超过 512，且维持比例
+        const options = {
+            maxSizeMB: 0.8,         // 最大约 800KB
+            maxWidthOrHeight: 512,  // 强制缩放到 512px 以内
+            useWebWorker: true,
+            initialQuality: 0.8     // 压缩质量
+        };
+
+        try {
+            setLoading(true);
+            const compressedBlob = await imageCompression(originFile, options);
+            
+            // 将压缩后的 Blob 转换为 File 对象以便上传
+            const finalFile = new File([compressedBlob], originFile.name, {
+                type: originFile.type,
+            });
+
+            setFile(finalFile);
+            setPreview(URL.createObjectURL(finalFile));
+        } catch (error) {
+            handleError("图片处理失败，请重试");
+            console.error(error);
+        } finally {
+            setLoading(false);
+        }
     };
 
     useEffect(() => {
@@ -62,7 +107,7 @@ export default function App() {
 
         const handleKeyDown = (e: KeyboardEvent) => {
             const isInput = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-            if (e.code === 'Space' && !isInput && !isSidebarOpen && !openDialog) {
+            if (e.code === 'Space' && !isInput && !isSidebarOpen && !openDialog && !openNameDialog) {
                 e.preventDefault();
                 setIsSpacePressed(true);
             }
@@ -91,7 +136,7 @@ export default function App() {
             window.removeEventListener('keyup', handleKeyUp);
             supabase.removeChannel(channel);
         };
-    }, [isSidebarOpen, openDialog]);
+    }, [isSidebarOpen, openDialog, openNameDialog]);
 
     const handleCanvasMouseDown = (e: React.MouseEvent) => {
         if (isSpacePressed) {
@@ -163,21 +208,37 @@ export default function App() {
         } catch (err: any) { handleError("提交失败：" + err.message); } finally { setIsSendingFeedback(false); }
     };
 
-    const scrollBoxSx = {
-        maxHeight: '60vh',
-        overflowY: 'auto',
-        pr: 1,
+    const mobileSheetSx = {
+        position: 'fixed',
+        bottom: 0,
+        left: '50%',
+        zIndex: 20001,
+        width: '100%',
+        maxWidth: '500px',
+        bgcolor: 'white',
+        px: 3, py: 4, pb: 6,
+        borderTopLeftRadius: '28px',
+        borderTopRightRadius: '28px',
+        boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
-        gap: 2.5,
-        '&::-webkit-scrollbar': { width: '6px' },
-        '&::-webkit-scrollbar-thumb': { bgcolor: 'rgba(0,0,0,0.1)', borderRadius: '10px' }
+        gap: 3,
+        boxShadow: '0 -10px 40px rgba(0,0,0,0.1)'
     };
 
-    const tooltipProps = {
-        slotProps: { popper: { sx: { zIndex: 10000 } } },
-        arrow: true,
-        placement: "bottom" as const
+    const pcModalSx = {
+        position: 'fixed',
+        top: '15%',
+        left: '50%',
+        zIndex: 20001,
+        width: { xs: '92%', sm: '480px' },
+        bgcolor: 'white',
+        p: 4,
+        borderRadius: '32px',
+        boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 3
     };
 
     return (
@@ -185,148 +246,205 @@ export default function App() {
 
             {/* 顶部药丸导航栏 */}
             <Box sx={{
-                position: 'fixed', top: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
-                minWidth: { xs: '92%', sm: '560px' }, height: '64px', bgcolor: 'rgba(255, 255, 255, 0.8)',
+                position: 'fixed', top: isMobile ? 16 : 24, left: '50%', transform: 'translateX(-50%)', zIndex: 9999,
+                width: isMobile ? 'calc(100% - 62px)' : 'auto',
+                minWidth: isMobile ? '0' : '560px',
+                height: '64px', bgcolor: 'rgba(255, 255, 255, 0.8)',
                 backdropFilter: 'blur(12px)', borderRadius: '32px', boxShadow: '0 10px 40px rgba(0,0,0,0.06)',
-                border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 3
+                border: '1px solid rgba(255,255,255,0.3)', display: 'flex', alignItems: 'center',
+                justifyContent: 'space-between', pl: isMobile ? 1.5 : 3, pr: 2,
             }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                    <Typography variant="h5" sx={{ fontWeight: 900, color: 'primary.main', letterSpacing: -1 }}>NOTIA</Typography>
-                    <Box sx={{ px: 1.2, py: 0.4, bgcolor: 'primary.main', color: 'white', borderRadius: '10px', fontSize: '0.8rem', fontWeight: 900 }}>
-                        {viewCount} VIEWS
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: isMobile ? 1 : 1.5 }}>
+                    <Typography variant="h5" sx={{ fontWeight: 900, color: 'primary.main', letterSpacing: -1, paddingX: isMobile ? 1 : 0, fontSize: isMobile ? '1.1rem' : '1.5rem', whiteSpace: 'nowrap' }}>NOTIA</Typography>
+                    <Box sx={{ px: 1, py: 0.3, bgcolor: 'primary.main', fontFamily: "Arial", color: 'white', borderRadius: '8px', fontSize: isMobile ? '0.6rem' : '0.8rem', fontWeight: 900, whiteSpace: 'nowrap' }}>
+                        {viewCount} 人看过
                     </Box>
                 </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <TextField size="small" placeholder="署名..." variant="standard" value={username} onChange={e => setUsername(e.target.value)}
-                               InputProps={{ disableUnderline: true }} sx={{ width: 100, bgcolor: 'rgba(0,0,0,0.04)', px: 1.2, py: 0.4, borderRadius: '6px' }} />
-                    <Tooltip title="投递贴纸" {...tooltipProps}>
-                        <IconButton color="primary" onClick={() => setOpenDialog(true)}><AddCircleOutline /></IconButton>
-                    </Tooltip>
-                    <Tooltip title={`共有 ${messages.length} 条消息`} {...tooltipProps}>
-                        <Badge badgeContent={messages.length} color="error" sx={{ mx: 2 }}>
-                            <ChatBubbleOutline fontSize="small" />
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, paddingX: isMobile ? 0.8 : 0, height: '100%' }}>
+                    {!isMobile && (
+                        <>
+                            <TextField size="small" placeholder="发布前先署名" variant="standard" value={username} onChange={e => setUsername(e.target.value)}
+                                InputProps={{ disableUnderline: true }} sx={{ width: 100, bgcolor: 'rgba(0,0,0,0.04)', px: 1.2, py: 0.4, borderRadius: '6px' }} />
+                            <Tooltip title={`共有 ${messages.length} 条消息`} arrow>
+                                <Badge badgeContent={messages.length} color="error" sx={{ mx: 1.5, my: 1 }}>
+                                    <ChatBubbleOutline fontSize="small" />
+                                </Badge>
+                            </Tooltip>
+                            <Tooltip title="建议反馈" arrow>
+                                <IconButton color="primary" onClick={() => setIsSidebarOpen(true)}><ContactSupport /></IconButton>
+                            </Tooltip>
+                        </>
+                    )}
+                    {isMobile && (
+                        <Badge badgeContent={messages.length} color="error" sx={{ mr: 0.5, '& .MuiBadge-badge': { fontSize: '0.6rem', height: '16px', minWidth: '16px' } }}>
+                            <ChatBubbleOutline color="action" />
                         </Badge>
-                    </Tooltip>
-                    <Tooltip title="建议反馈" {...tooltipProps}>
-                        <IconButton color="primary" onClick={() => setIsSidebarOpen(true)}><ContactSupport /></IconButton>
-                    </Tooltip>
+                    )}
+
+                    <IconButton
+                        color="primary"
+                        onClick={() => setOpenDialog(true)}
+                        size="medium"
+                        sx={{
+                            p: 1,
+                            display: isMobile ? "none" : "flex"
+                        }}
+                    >
+                        <AddCircleOutline />
+                    </IconButton>
                 </Box>
             </Box>
 
-            {/* 画布区域 - 包含自定义滚动条 */}
-            <Box
-                ref={scrollContainerRef}
-                onMouseDown={handleCanvasMouseDown}
-                onMouseMove={handleCanvasMouseMove}
-                onMouseUp={handleCanvasMouseUp}
-                onMouseLeave={handleCanvasMouseUp}
-                sx={{
-                    width: '100%', height: '100%', overflow: 'auto',
-                    cursor: isSpacePressed ? (isDraggingCanvas ? 'grabbing' : 'grab') : 'default',
-                    '&::-webkit-scrollbar': { width: '8px', height: '8px' },
-                    '&::-webkit-scrollbar-track': { background: 'transparent' },
-                    '&::-webkit-scrollbar-thumb': {
-                        backgroundColor: 'rgba(0, 0, 0, 0.1)',
-                        borderRadius: '10px',
-                        border: '2px solid transparent',
-                        backgroundClip: 'content-box',
-                        '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.2)' }
-                    },
-                    scrollbarWidth: 'thin',
-                    scrollbarColor: 'rgba(0, 0, 0, 0.1) transparent'
-                }}
-            >
-                <Box sx={{
-                    width: '2560px', height: '1440px', position: 'relative',
-                    backgroundImage: 'radial-gradient(#d1d5db 1px, transparent 0)', backgroundSize: '40px 40px',
-                    '& > *': { pointerEvents: isSpacePressed ? 'none' : 'auto' }
-                }}>
+            {/* 画布区域 */}
+            <Box ref={scrollContainerRef} 
+    onMouseDown={handleCanvasMouseDown} 
+    onMouseMove={handleCanvasMouseMove} 
+    onMouseUp={handleCanvasMouseUp} 
+    onMouseLeave={handleCanvasMouseUp}
+
+    sx={{ 
+        width: '100%', 
+        height: '100%', 
+        overflow: 'auto', 
+        cursor: isSpacePressed ? 'grab' : 'default',
+        // --- 新增：自定义滚动条样式 ---
+        '&::-webkit-scrollbar': {
+            width: '8px',
+            height: '8px',
+        },
+        '&::-webkit-scrollbar-track': {
+            backgroundColor: 'rgba(0,0,0,0.05)',
+        },
+        '&::-webkit-scrollbar-thumb': {
+            backgroundColor: 'rgba(0,0,0,0.2)',
+            borderRadius: '10px',
+            '&:hover': {
+                backgroundColor: 'rgba(0,0,0,0.3)',
+            },
+        },
+        // 兼容 Firefox
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'rgba(0,0,0,0.2) rgba(0,0,0,0.05)',
+    }}>
+                <Box sx={{ width: '2560px', height: '1440px', position: 'relative', backgroundImage: 'radial-gradient(#d1d5db 1px, transparent 0)', backgroundSize: '40px 40px', '& > *': {
+            pointerEvents: isSpacePressed ? 'none' : 'auto',
+        }}}>
                     {messages.map((msg) => (
                         <MessageTag key={msg.id} data={msg} onFocus={handleFocus} onStop={handleStop} />
                     ))}
                 </Box>
             </Box>
 
-            {/* 统一弹窗系统 */}
+            {/* 移动端 FAB */}
+            <Zoom in={isMobile} unmountOnExit>
+                <Box sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 10000, display: 'flex', flexDirection: 'column', gap: 2 }}>
+  {/* 第一个：蓝色背景 + 白色图标 */}
+  <Fab color="primary" onClick={() => setOpenDialog(true)}>
+    <AddCircleOutline sx={{ color: 'white' }} />
+  </Fab>
+
+  
+  {/* 第三个：根据 username 动态切换样式 */}
+  <Fab 
+    color={username.trim() ? "default" : "warning"}
+    onClick={() => setOpenNameDialog(true)}
+    sx={{ 
+      bgcolor: username.trim() ? 'white' : undefined  // 有用户名时白色背景
+    }}
+  >
+    {username.trim() ? (
+      <EditNote color="primary" />  // 有用户名：蓝色图标
+    ) : (
+      <EditNote sx={{ color: 'white' }} />  // 无用户名：白色图标
+    )}
+  </Fab>
+
+    {/* 第二个：白色背景 + 蓝色图标（保持不变） */}
+  <Fab color="default" onClick={() => setIsSidebarOpen(true)} sx={{ bgcolor: 'white' }}>
+    <ContactSupport color="primary" />
+  </Fab>
+</Box>
+            </Zoom>
+
+            {/* 弹窗集合 */}
             <AnimatePresence>
-                {(isSidebarOpen || openDialog) && (
+                {(openNameDialog || isSidebarOpen || openDialog) && (
                     <>
                         <Box component={motion.div} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                             onClick={() => { if (!loading && !isSendingFeedback) { setIsSidebarOpen(false); setOpenDialog(false); } }}
-                             sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(8px)', zIndex: 20000 }} />
+                            onClick={() => { if(!loading) { setOpenNameDialog(false); setIsSidebarOpen(false); setOpenDialog(false); } }}
+                            sx={{ position: 'fixed', inset: 0, bgcolor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', zIndex: 20000 }} />
 
-                        {/* 反馈窗口 */}
-                        {isSidebarOpen && (
-                            <Box component={motion.div} initial={{ opacity: 0, scale: 0.9, y: 20, x: '-50%' }} animate={{ opacity: 1, scale: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
-                                 sx={{ position: 'fixed', top: '15%', left: '50%', zIndex: 20001, width: { xs: '92%', sm: '480px' }, bgcolor: 'white', p: 4, borderRadius: '32px', boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {openNameDialog && (
+                            <Box component={motion.div}
+                                initial={isMobile ? { y: "105%", x: '-50%' } : { opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
+                                animate={isMobile ? { y: 0, x: '-50%' } : { opacity: 1, scale: 1, y: 0, x: '-50%' }}
+                                exit={isMobile ? { y: "105%", x: '-50%' } : { opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
+                                sx={isMobile ? mobileSheetSx : pcModalSx}
+                                transition={transitionConfig}
+                            >
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Typography variant="h5" fontWeight="900" color="primary">建议与反馈</Typography>
-                                    <IconButton onClick={() => setIsSidebarOpen(false)} sx={{ bgcolor: '#f5f5f5' }}><Close fontSize="small" /></IconButton>
+                                    <Typography variant="h6" fontWeight="900" color="primary">设置您的署名</Typography>
+                                    <IconButton onClick={() => setOpenNameDialog(false)} sx={{ bgcolor: '#f5f5f5' }}><Close fontSize="small" /></IconButton>
                                 </Box>
-                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-                                    <TextField fullWidth label="如何联系您？" variant="outlined" value={feedbackContact} onChange={e => setFeedbackContact(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '14px' } }} />
-                                    <TextField fullWidth label="想说点什么..." multiline rows={5} variant="outlined" value={feedbackContent} onChange={e => setFeedbackContent(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '14px' } }} />
-                                    <Button variant="contained" fullWidth size="large" disabled={isSendingFeedback} sx={{ py: 2, borderRadius: '16px', fontWeight: 'bold' }} onClick={handleFeedbackSubmit}>
-                                        {isSendingFeedback ? '发送中...' : '提交反馈'}
-                                    </Button>
-                                </Box>
+                                <TextField fullWidth autoFocus placeholder="发布贴纸前请先输入署名..." value={username} onChange={e => setUsername(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '12px', bgcolor: '#f9f9f9' } }} />
+                                <Button variant="contained" fullWidth size="large" onClick={() => setOpenNameDialog(false)} sx={{ py: 1.5, borderRadius: '14px', fontWeight: 'bold' }}>确认</Button>
                             </Box>
                         )}
 
-                        {/* 发布窗口 */}
-                        {openDialog && (
-                            <Box component={motion.div} initial={{ opacity: 0, scale: 0.9, y: 20, x: '-50%' }} animate={{ opacity: 1, scale: 1, y: 0, x: '-50%' }} exit={{ opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
-                                 sx={{ position: 'fixed', top: '10%', left: '50%', zIndex: 20001, width: { xs: '92%', sm: '480px' }, bgcolor: 'white', p: 4, borderRadius: '32px', boxShadow: '0 30px 60px -12px rgba(0,0,0,0.3)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        {isSidebarOpen && (
+                            <Box component={motion.div}
+                                initial={isMobile ? { y: "100%", x: '-50%' } : { opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
+                                animate={isMobile ? { y: 0, x: '-50%' } : { opacity: 1, scale: 1, y: 0, x: '-50%' }}
+                                exit={isMobile ? { y: "100%", x: '-50%' } : { opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
+                                sx={isMobile ? mobileSheetSx : pcModalSx}
+                                transition={transitionConfig}>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                    <Typography variant="h5" fontWeight="900" color="primary">发布一个标签</Typography>
+                                    <Typography variant="h6" fontWeight="900" color="primary">建议与反馈</Typography>
+                                    <IconButton onClick={() => setIsSidebarOpen(false)} sx={{ bgcolor: '#f5f5f5' }}><Close fontSize="small" /></IconButton>
+                                </Box>
+                                <TextField fullWidth label="如何联系？" value={feedbackContact} onChange={e => setFeedbackContact(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '12px' } }} />
+                                <TextField fullWidth multiline rows={4} label="内容" value={feedbackContent} onChange={e => setFeedbackContent(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '12px' } }} />
+                                <Button variant="contained" fullWidth size="large" onClick={handleFeedbackSubmit} sx={{ py: 1.5, borderRadius: '14px', fontWeight: 'bold' }}>提交</Button>
+                            </Box>
+                        )}
+
+                        {openDialog && (
+                            <Box component={motion.div}
+                                initial={isMobile ? { y: "100%", x: '-50%' } : { opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
+                                animate={isMobile ? { y: 0, x: '-50%' } : { opacity: 1, scale: 1, y: 0, x: '-50%' }}
+                                exit={isMobile ? { y: "100%", x: '-50%' } : { opacity: 0, scale: 0.9, y: 20, x: '-50%' }}
+                                sx={isMobile ? mobileSheetSx : pcModalSx}
+                                transition={transitionConfig}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Typography variant="h6" fontWeight="900" color="primary">发布新贴纸</Typography>
                                     <IconButton onClick={() => setOpenDialog(false)} sx={{ bgcolor: '#f5f5f5' }}><Close fontSize="small" /></IconButton>
                                 </Box>
-                                <Box sx={scrollBoxSx}>
-                                    <TextField fullWidth multiline rows={4} placeholder="写点什么..." value={content} onChange={e => setContent(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '18px', bgcolor: '#f9f9f9' } }} />
-                                    {!preview ? (
-                                        <Button component="label" fullWidth variant="outlined" sx={{ py: 5, borderStyle: 'dashed', borderRadius: '18px', borderColor: '#ddd', color: 'text.secondary' }}>
-                                            + 点击上传图片
-                                            <input type="file" hidden accept="image/*" onChange={(e) => {
-                                                const f = e.target.files?.[0];
-                                                if (f) {
-                                                    const img = new Image();
-                                                    img.src = URL.createObjectURL(f);
-                                                    img.onload = () => {
-                                                        if (img.width > 512 || img.height > 512) {
-                                                            handleError(`尺寸过大 (${img.width}x${img.height})，请限制在 512x512 内`);
-                                                            URL.revokeObjectURL(img.src);
-                                                            e.target.value = ''; return;
-                                                        }
-                                                        setFile(f); setPreview(img.src);
-                                                    };
-                                                }
-                                            }} />
-                                        </Button>
-                                    ) : (
-                                        <Box sx={{ position: 'relative' }}>
-                                            <Box component="img" src={preview} sx={{ width: '100%', borderRadius: '18px', display: 'block', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                                            <IconButton onClick={() => { setFile(null); setPreview(null); }} sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(255,255,255,0.9)' }} size="small"><Close fontSize="small" /></IconButton>
-                                        </Box>
-                                    )}
-                                </Box>
-                                <Box sx={{ display: 'flex', gap: 2 }}>
-                                    <Button fullWidth variant="text" onClick={() => setOpenDialog(false)} sx={{ fontWeight: 'bold', borderRadius: '12px' }}>取消</Button>
-                                    <Button variant="contained" fullWidth size="large" onClick={handleSubmit} disabled={loading} sx={{ py: 1.5, borderRadius: '16px', fontWeight: 'bold' }}>
-                                        {loading ? '发布中...' : '确认投递'}
+                                <TextField fullWidth multiline rows={isMobile ? 3 : 4} placeholder="写点什么..." value={content} onChange={e => setContent(e.target.value)} sx={{ "& .MuiOutlinedInput-root": { borderRadius: '12px', bgcolor: '#f9f9f9' } }} />
+                                {!preview ? (
+                                    <Button component="label" fullWidth variant="outlined" sx={{ py: 3, borderStyle: 'dashed', borderRadius: '12px' }}>
+                                        {loading ? '正在处理图片...' : '+ 上传图片 (不推荐过大的图片)'}
+                                        <input type="file" hidden accept="image/*" disabled={loading} onChange={handleImageChange} />
                                     </Button>
-                                </Box>
+                                ) : (
+                                    <Box sx={{ position: 'relative' }}>
+                                        <Box component="img" src={preview} sx={{ width: '100%', borderRadius: '12px', maxHeight: '200px', objectFit: 'contain', bgcolor: '#f0f0f0' }} />
+                                        <IconButton onClick={() => {setPreview(null); setFile(null);}} sx={{ position: 'absolute', top: 8, right: 8, bgcolor: 'rgba(255,255,255,0.8)' }} size="small">
+                                            <Close fontSize="small" />
+                                        </IconButton>
+                                    </Box>
+                                )}
+                                <Button variant="contained" fullWidth size="large" onClick={handleSubmit} disabled={loading} sx={{ py: 1.5, borderRadius: '14px', fontWeight: 'bold' }}>
+                                    {loading ? '处理中...' : '确认投递'}
+                                </Button>
                             </Box>
                         )}
                     </>
                 )}
             </AnimatePresence>
 
-            <Snackbar open={showSuccess} autoHideDuration={3000} onClose={() => setShowSuccess(false)} sx={{ zIndex: 30000 }} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} TransitionComponent={SlideUp}>
-                <Alert severity="success" variant="filled" sx={{ width: '100%', borderRadius: '16px' }}>操作成功！</Alert>
-            </Snackbar>
-            <Snackbar open={openError} autoHideDuration={5000} onClose={() => setOpenError(false)} sx={{ zIndex: 30000 }} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} TransitionComponent={SlideUp}>
-                <Alert severity="error" variant="filled" sx={{ width: '100%', borderRadius: '16px' }}>{errorMsg}</Alert>
-            </Snackbar>
+            <Snackbar open={showSuccess} autoHideDuration={3000} onClose={() => setShowSuccess(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} TransitionComponent={SlideUp}><Alert severity="success" variant="filled" sx={{ borderRadius: '12px' }}>操作成功！</Alert></Snackbar>
+            <Snackbar open={openError} autoHideDuration={5000} onClose={() => setOpenError(false)} anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }} TransitionComponent={SlideUp}><Alert severity="error" variant="filled" sx={{ borderRadius: '12px' }}>{errorMsg}</Alert></Snackbar>
         </Box>
     );
 }
